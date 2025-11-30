@@ -1,0 +1,493 @@
+# Autonomous CRM - Cursor AI Rules
+# Este archivo define las reglas y convenciones para desarrollo con Cursor AI
+
+## 🎯 CONTEXTO DEL PROYECTO
+Proyecto: Sistema CRM Autónomo con IA Multi-Agente
+Stack: FastAPI + PostgreSQL + n8n + Redis + OpenAI/Anthropic
+Propósito: Gestión automatizada del ciclo de vida del cliente con IA
+Versión Python: 3.11+
+
+## 📋 CONVENCIONES DE CÓDIGO
+
+### Python General
+- SIEMPRE usar type hints en funciones, métodos y variables
+- Docstrings estilo Google para todas las funciones públicas
+- Nombres de archivos en snake_case.py
+- Nombres de clases en PascalCase
+- Nombres de funciones y variables en snake_case
+- Constantes en UPPER_SNAKE_CASE
+- Async/await OBLIGATORIO para todo I/O (DB, HTTP, IA)
+- Máximo 100 caracteres por línea
+- 2 líneas en blanco entre clases, 1 línea entre métodos
+
+### FastAPI
+- Todos los endpoints deben tener:
+  * Type hints completos
+  * response_model definido
+  * status_code explícito
+  * Docstring con ejemplo curl
+  * Tags para organización
+  * Dependencies para validación
+
+### SQLAlchemy
+- Usar SOLO SQLAlchemy 2.0+ (NO versiones antiguas)
+- Sintaxis nueva: Mapped[str], mapped_column()
+- NO usar: Column, String, Integer (sintaxis antigua)
+- Async session SIEMPRE: AsyncSession, async_sessionmaker
+- Relationships con back_populates
+
+### Pydantic
+- Versión 2.x sintaxis
+- BaseModel para schemas
+- ConfigDict para configuración
+- Field con validación explícita
+- schema_extra para ejemplos en OpenAPI
+
+### Logging
+- Usar structlog en TODOS los servicios
+- Nunca usar print(), usar logger.info/error/warning
+- Context logging: incluir IDs relevantes (lead_id, conversation_id)
+- Niveles: DEBUG (desarrollo), INFO (producción), ERROR (fallos)
+
+## 🏗️ ESTRUCTURA DE ARCHIVOS
+
+### Al crear un nuevo endpoint:
+1. Modelo en app/models/{nombre}.py
+2. Schema en app/schemas/{nombre}.py  
+3. Servicio en app/services/{nombre}.py
+4. Endpoint en app/api/v1/{nombre}.py
+5. Test en tests/test_api/test_{nombre}.py
+
+### Al crear un nuevo servicio:
+1. Clase en app/services/{nombre}.py
+2. Métodos async
+3. Dependency injection para DB y AI
+4. Error handling con custom exceptions
+5. Logging estructurado
+6. Tests en tests/test_services/test_{nombre}.py
+
+### Al crear integración con IA:
+1. Adapter en app/ai/{proveedor}_adapter.py
+2. Heredar de AIAdapter (app/ai/base.py)
+3. Implementar retry logic con tenacity
+4. Timeout de 30 segundos
+5. Rate limiting
+6. Structured outputs con Pydantic
+
+## 📦 LIBRERÍAS Y VERSIONES
+
+### Core Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+### Base de Datos
+sqlalchemy[asyncio]==2.0.23
+asyncpg==0.29.0
+alembic==1.13.0
+
+### IA
+openai==1.6.1
+anthropic==0.8.0
+tenacity==8.2.3
+
+### HTTP
+httpx==0.25.2
+
+### Cache
+redis==5.0.1
+
+### Utils
+phonenumbers==8.13.26
+email-validator==2.1.0
+python-dotenv==1.0.0
+structlog==23.2.0
+
+### Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+
+## 🎨 PATRONES DE DISEÑO
+
+### Repository Pattern
+Usar para acceso a datos:
+```python
+class LeadRepository:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+    
+    async def create(self, lead: Lead) -> Lead:
+        self.session.add(lead)
+        await self.session.commit()
+        return lead
+```
+
+### Factory Pattern
+Usar para crear instancias de AI adapters:
+```python
+class AIAdapterFactory:
+    @staticmethod
+    def create(provider: str) -> AIAdapter:
+        if provider == "openai":
+            return OpenAIAdapter()
+        elif provider == "anthropic":
+            return AnthropicAdapter()
+```
+
+### Dependency Injection
+Usar FastAPI Depends():
+```python
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with AsyncSessionLocal() as session:
+        yield session
+
+@router.post("/classify")
+async def classify_lead(
+    request: LeadRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    ...
+```
+
+## 🔒 MANEJO DE ERRORES
+
+### Excepciones Personalizadas
+```python
+class CRMException(Exception):
+    """Base exception para CRM"""
+    pass
+
+class AIServiceError(CRMException):
+    """Error comunicándose con IA"""
+    pass
+
+class LeadNotFoundError(CRMException):
+    """Lead no encontrado"""
+    pass
+```
+
+### En Endpoints
+```python
+from fastapi import HTTPException
+
+@router.get("/leads/{lead_id}")
+async def get_lead(lead_id: str):
+    try:
+        lead = await service.get_lead(lead_id)
+        if not lead:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        return lead
+    except Exception as e:
+        logger.error("error_getting_lead", lead_id=lead_id, error=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
+```
+
+### Retry Logic
+```python
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10)
+)
+async def call_ai_api():
+    ...
+```
+
+## 🧪 TESTING
+
+### Estructura de Tests
+```python
+import pytest
+from httpx import AsyncClient
+
+@pytest.mark.asyncio
+async def test_classify_lead(client: AsyncClient, mock_openai):
+    """Test clasificación de lead con IA"""
+    response = await client.post(
+        "/api/v1/leads/classify",
+        json={
+            "message": "Necesito 500 laptops",
+            "sender_metadata": {"name": "Juan"}
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert 0 <= data["score"] <= 100
+    assert data["category"] in ["hot", "warm", "cold"]
+```
+
+### Fixtures Requeridos
+```python
+# tests/conftest.py
+@pytest.fixture
+async def db_session():
+    """Sesión de DB de prueba"""
+    ...
+
+@pytest.fixture
+async def client(db_session):
+    """Cliente HTTP de prueba"""
+    ...
+
+@pytest.fixture
+def mock_openai(mocker):
+    """Mock de OpenAI API"""
+    ...
+```
+
+## 📝 DOCUMENTACIÓN
+
+### Docstrings de Funciones
+```python
+async def classify_lead(
+    message: str,
+    context: Optional[Dict] = None
+) -> LeadScore:
+    """
+    Clasifica un lead usando IA.
+    
+    Args:
+        message: Texto del mensaje del lead
+        context: Contexto adicional (historial, metadata)
+    
+    Returns:
+        LeadScore con score 0-100 y categoría
+    
+    Raises:
+        AIServiceError: Si la IA no responde
+        ValidationError: Si el mensaje es inválido
+    
+    Example:
+        >>> classifier = LeadClassifier()
+        >>> result = await classifier.classify("Necesito 500 laptops")
+        >>> print(result.score)
+        87
+    """
+```
+
+### Comentarios
+- Comentarios para lógica compleja o no obvia
+- NO comentar lo obvio
+- Comentarios en español están OK
+- TODO/FIXME/HACK con contexto
+
+## 🚀 ORDEN DE IMPLEMENTACIÓN
+
+Al crear nuevo código, seguir este orden:
+
+### 1. Core (Base)
+- app/core/config.py
+- app/core/logging.py  
+- app/core/security.py
+
+### 2. Database
+- app/db/base.py
+- app/db/session.py
+- app/models/ (todos los modelos)
+
+### 3. Schemas
+- app/schemas/ (Pydantic models)
+
+### 4. AI Adapters
+- app/ai/base.py
+- app/ai/openai_adapter.py
+- app/ai/anthropic_adapter.py
+
+### 5. Services
+- Implementar flujos en orden 1-22
+- Un servicio a la vez
+- Con tests
+
+### 6. API Endpoints
+- Después de servicios
+- Con documentación OpenAPI
+- Con tests de integración
+
+### 7. Jobs
+- app/jobs/scheduler.py
+- Tareas programadas
+
+### 8. Integrations
+- app/integrations/n8n.py
+- Otros conectores
+
+## ⚙️ CONFIGURACIÓN
+
+### Variables de Entorno Requeridas
+```bash
+# Database
+DATABASE_URL=postgresql+asyncpg://user:pass@localhost/crm
+
+# Redis
+REDIS_URL=redis://localhost:6379/0
+
+# OpenAI
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4-turbo-preview
+
+# Anthropic
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_MODEL=claude-sonnet-4-20250514
+
+# Meta APIs
+META_ACCESS_TOKEN=...
+META_PHONE_NUMBER_ID=...
+
+# Security
+SECRET_KEY=...
+```
+
+### Settings Class
+```python
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    database_url: str
+    openai_api_key: str
+    
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8"
+    )
+
+settings = Settings()
+```
+
+## 🎯 EJEMPLOS DE CÓDIGO COMPLETO
+
+### Modelo
+```python
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import String, Integer, DateTime
+from app.db.base import Base
+import uuid
+
+class Lead(Base):
+    __tablename__ = "leads"
+    
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(255))
+    score: Mapped[int] = mapped_column(Integer, default=0)
+```
+
+### Schema
+```python
+from pydantic import BaseModel, Field, ConfigDict
+
+class LeadCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    email: str | None = Field(None)
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "Juan Pérez",
+                "email": "juan@example.com"
+            }
+        }
+    )
+```
+
+### Servicio
+```python
+import structlog
+from app.models.lead import Lead
+from app.schemas.lead import LeadCreate
+
+logger = structlog.get_logger()
+
+class LeadService:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+    
+    async def create_lead(self, data: LeadCreate) -> Lead:
+        logger.info("creating_lead", name=data.name)
+        
+        lead = Lead(
+            name=data.name,
+            email=data.email
+        )
+        
+        self.db.add(lead)
+        await self.db.commit()
+        await self.db.refresh(lead)
+        
+        logger.info("lead_created", lead_id=lead.id)
+        return lead
+```
+
+### Endpoint
+```python
+from fastapi import APIRouter, Depends, HTTPException
+from app.schemas.lead import LeadCreate, LeadResponse
+from app.services.lead_service import LeadService
+
+router = APIRouter(prefix="/leads", tags=["Leads"])
+
+@router.post("/", response_model=LeadResponse, status_code=201)
+async def create_lead(
+    data: LeadCreate,
+    service: LeadService = Depends()
+) -> LeadResponse:
+    """
+    Crea un nuevo lead.
+    
+    Example:
+        curl -X POST http://localhost:8000/api/v1/leads \
+          -H "Content-Type: application/json" \
+          -d '{"name": "Juan", "email": "juan@example.com"}'
+    """
+    try:
+        lead = await service.create_lead(data)
+        return LeadResponse.model_validate(lead)
+    except Exception as e:
+        logger.error("error_creating_lead", error=str(e))
+        raise HTTPException(status_code=500, detail="Error creating lead")
+```
+
+## 🚨 IMPORTANTE: LO QUE NUNCA HACER
+
+❌ NO usar print() para debugging → Usar logger
+❌ NO usar SQLAlchemy 1.x sintaxis → Usar 2.0+
+❌ NO crear endpoints sin type hints → SIEMPRE type hints
+❌ NO usar sync code para I/O → SIEMPRE async/await
+❌ NO hardcodear valores → Usar config/environment
+❌ NO ignorar errores → Siempre manejar y loggear
+❌ NO usar rangos de versiones → Versiones exactas en requirements.txt
+❌ NO mezclar español/inglés en código → Inglés en código, español en comentarios OK
+
+## ✅ CHECKLIST ANTES DE COMMIT
+
+- [ ] Type hints en todas las funciones
+- [ ] Docstrings en funciones públicas  
+- [ ] Logging estructurado implementado
+- [ ] Error handling apropiado
+- [ ] Tests escritos y pasando
+- [ ] Sin print() statements
+- [ ] Variables de entorno documentadas
+- [ ] Código formateado (black)
+- [ ] Imports organizados (isort)
+
+## 📚 REFERENCIAS
+
+- FastAPI Docs: https://fastapi.tiangolo.com
+- SQLAlchemy 2.0: https://docs.sqlalchemy.org/en/20/
+- Pydantic V2: https://docs.pydantic.dev/latest/
+- Structlog: https://www.structlog.org/
+- OpenAI API: https://platform.openai.com/docs
+- Anthropic API: https://docs.anthropic.com
+
+---
+
+**NOTA PARA CURSOR:**
+Este archivo define las reglas del proyecto. Al generar código:
+1. Lee SIEMPRE este archivo primero
+2. Sigue TODAS las convenciones aquí definidas
+3. Usa los ejemplos como template
+4. Pregunta si algo no está claro
+5. NO inventes convenciones nuevas sin consultar

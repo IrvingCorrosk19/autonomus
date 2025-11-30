@@ -89,6 +89,9 @@
 ### "Quiero saber sobre contenedores"
 → Lee: `RESUMEN_CONTENEDORES.md`
 
+### "Quiero usar Cursor AI para desarrollar"
+→ Lee: `.cursorrules` y `docs/CURSOR_PROMPTS.md`
+
 ## 📋 Documentos por Categoría
 
 ### Inicio Rápido
