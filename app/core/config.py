@@ -59,9 +59,22 @@ class Settings(BaseSettings):
     STORAGE_TYPE: str = "local"
     STORAGE_PATH: str = "./storage"
     
+    # Jobs intervals
+    FOLLOW_UP_CHECK_INTERVAL_HOURS: int = 1
+    CART_RECOVERY_CHECK_INTERVAL_HOURS: int = 1
+    PAYMENT_REMINDER_CHECK_INTERVAL_HOURS: int = 24
+    ALERTS_CHECK_INTERVAL_HOURS: int = 1
+    
+    # Limits
+    MAX_MESSAGE_LENGTH: int = 4096
+    MAX_CONVERSATION_HISTORY: int = 50
+    LEAD_SCORE_THRESHOLD_HOT: int = 80
+    LEAD_SCORE_THRESHOLD_WARM: int = 50
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # Ignorar variables extra en .env
 
 
 settings = Settings()
