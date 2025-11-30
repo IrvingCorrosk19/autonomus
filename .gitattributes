@@ -1,0 +1,11 @@
+# Configurar manejo de line endings
+* text=auto
+*.sh text eol=lf
+*.bat text eol=crlf
+*.md text
+*.py text
+*.json text
+*.yml text
+*.yaml text
+*.txt text
+
