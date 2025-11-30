@@ -1,0 +1,151 @@
+{
+  "name": "02 - Lead Classification",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-classify",
+        "responseMode": "responseNode"
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://fastapi:8000/api/v1/leads/classify",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "message",
+              "value": "={{ $json.body.message }}"
+            },
+            {
+              "name": "sender_metadata",
+              "value": "={{ $json.body.sender_metadata }}"
+            }
+          ]
+        }
+      },
+      "name": "Classify Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.score }}",
+              "operation": "larger",
+              "value2": 80
+            }
+          ]
+        }
+      },
+      "name": "Is Hot Lead?",
+      "type": "n8n-nodes-base.if",
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://fastapi:8000/api/v1/intents/detect",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "message",
+              "value": "={{ $('Webhook').item.json.body.message }}"
+            }
+          ]
+        }
+      },
+      "name": "Detect Intent",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://fastapi:8000/api/v1/sentiment/analyze",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "message",
+              "value": "={{ $('Webhook').item.json.body.message }}"
+            }
+          ]
+        }
+      },
+      "name": "Analyze Sentiment",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [850, 400]
+    },
+    {
+      "parameters": {
+        "url": "http://fastapi:8000/api/v1/router/route",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "intent",
+              "value": "={{ $json }}"
+            },
+            {
+              "name": "sentiment",
+              "value": "={{ $('Analyze Sentiment').item.json }}"
+            },
+            {
+              "name": "lead_score",
+              "value": "={{ $('Classify Lead').item.json }}"
+            }
+          ]
+        }
+      },
+      "name": "Route Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"processed\", \"routing\": $json } }}"
+      },
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [1250, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{"node": "Classify Lead", "type": "main", "index": 0}]]
+    },
+    "Classify Lead": {
+      "main": [[{"node": "Is Hot Lead?", "type": "main", "index": 0}]]
+    },
+    "Is Hot Lead?": {
+      "main": [
+        [
+          {"node": "Detect Intent", "type": "main", "index": 0},
+          {"node": "Analyze Sentiment", "type": "main", "index": 0}
+        ],
+        [{"node": "Route Message", "type": "main", "index": 0}]
+      ]
+    },
+    "Detect Intent": {
+      "main": [[{"node": "Route Message", "type": "main", "index": 0}]]
+    },
+    "Analyze Sentiment": {
+      "main": [[{"node": "Route Message", "type": "main", "index": 0}]]
+    },
+    "Route Message": {
+      "main": [[{"node": "Respond", "type": "main", "index": 0}]]
+    }
+  }
+}
+

@@ -1,0 +1,57 @@
+# Docker Compose para Producción
+# Incluye contenedores adicionales para producción
+
+version: '3.8'
+
+services:
+  # Incluir todos los servicios base
+  # Usar: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up
+
+  # Celery Worker para jobs en background
+  celery_worker:
+    build: .
+    container_name: autonomous_crm_worker
+    command: celery -A app.jobs.celery_app worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/autonomous_crm
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+      - fastapi
+    volumes:
+      - ./app:/app/app
+
+  # Celery Beat para scheduling
+  celery_beat:
+    build: .
+    container_name: autonomous_crm_beat
+    command: celery -A app.jobs.celery_app beat --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/autonomous_crm
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+      - fastapi
+    volumes:
+      - ./app:/app/app
+
+  # Nginx como reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: autonomous_crm_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - fastapi
+      - n8n
+

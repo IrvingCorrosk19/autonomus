@@ -1,0 +1,90 @@
+{
+  "name": "03 - Chatbot Conversation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chatbot/respond",
+        "responseMode": "responseNode"
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://fastapi:8000/api/v1/chatbot/respond",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "message",
+              "value": "={{ $json.body.message }}"
+            },
+            {
+              "name": "context",
+              "value": "={{ $json.body.context }}"
+            }
+          ]
+        }
+      },
+      "name": "Chatbot Respond",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.action }}",
+              "operation": "equals",
+              "value2": "escalate_to_human"
+            }
+          ]
+        }
+      },
+      "name": "Needs Escalation?",
+      "type": "n8n-nodes-base.if",
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://fastapi:8000/api/v1/escalate",
+        "method": "POST",
+        "sendBody": true
+      },
+      "name": "Escalate to Human",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [850, 400]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{"node": "Chatbot Respond", "type": "main", "index": 0}]]
+    },
+    "Chatbot Respond": {
+      "main": [[{"node": "Needs Escalation?", "type": "main", "index": 0}]]
+    },
+    "Needs Escalation?": {
+      "main": [
+        [{"node": "Escalate to Human", "type": "main", "index": 0}],
+        [{"node": "Respond", "type": "main", "index": 0}]
+      ]
+    },
+    "Escalate to Human": {
+      "main": [[{"node": "Respond", "type": "main", "index": 0}]]
+    }
+  }
+}
+
