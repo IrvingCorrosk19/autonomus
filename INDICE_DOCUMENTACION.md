@@ -115,8 +115,7 @@
 - `n8n/workflows/README.md`
 
 ### Instrucciones Originales
-- `Instrucciones_Autonomous_CRM_Cursor_MEJORADO.md`
-- `Instrucciones_Autonomous_CRM_Cursor_PARTE_2.md`
+- (Archivos movidos a `docs/` y consolidados)
 
 ---
 
